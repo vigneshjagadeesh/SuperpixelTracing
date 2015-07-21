@@ -6,7 +6,7 @@ else
     batchIter = varargin{1};
 end
 if( USE_RGB )
-    no_bins = 8;
+    no_bins = 8;%16
     bin_width = 256 / no_bins;    
     % figure(402); imshow(flowCol); pause(.1);
     %% LAB Histogram Parameters
@@ -21,11 +21,12 @@ else
 end
 
 % Texture
-%    lbpCode = padarray( lbp(rgb2gray(I), 1, 8, supInfo(1).mapping, 'i'), [1 1], 'replicate', 'both' );
+    lbpCode = padarray( lbp(rgb2gray(I), 1, 8, supInfo(1).mapping, 'i'), [1 1], 'replicate', 'both' );
     
     % Optical Flow .5 15 5  10 7  1.5
     try,
-    [Vx Vy] = vrl_opencvFlow(double([size(I,1) size(I,2) .5 15 7  10 7  1.5]), rgb2gray(uint8(Iprev)), rgb2gray(uint8(I)));
+    Vx = zeros(size(I,1), size(I,2));  Vy = zeros(size(I,1), size(I,2));
+        %[Vx Vy] = vrl_opencvFlow(double([size(I,1) size(I,2) .5 15 7  10 7  1.5]), rgb2gray(uint8(Iprev)), rgb2gray(uint8(I)));
     catch me
         display('Flow not computed');
         Vx = zeros(size(I,1), size(I,2));
@@ -52,7 +53,19 @@ BLUE  = I(:,:,3);
 
 
 prevNodeOffset = nodeOffset - numel( unique(SPrev) );
+% Preprocess
+Spre = zeros( size(S) );
 uniqueInd = unique(S); % Dont want to deal with zeros
+newId = 1;
+for iter = 1:numel(uniqueInd)
+    currMask = S == uniqueInd(iter);
+    CC = bwconncomp(currMask);
+    for ccIter = 1:CC.NumObjects
+        Spre(CC.PixelIdxList{ccIter}) = newId; newId = newId + 1;
+    end
+end
+S = Spre; uniqueInd = unique(S);
+
 SNew = zeros( size(S) );
 for iter = 1:numel(uniqueInd)
     SNew( S==uniqueInd(iter) ) = iter;
@@ -91,6 +104,7 @@ for iter = 1:numel(uniqueInd)
     
     try,
         supInfo(iter+nodeOffset).neighbors = [spatNeighbors(:); timeNeighbors ];
+        supInfo(iter+nodeOffset).neiflagger = [zeros(numel(spatNeighbors(:)),1); ones(numel(timeNeighbors),1) ];
     catch me,
         me
         spatNeighbors
@@ -106,27 +120,27 @@ for iter = 1:numel(uniqueInd)
     supInfo(iter+nodeOffset).currPixelIdx  = find( pickInd );
     
     %%%%% LBP Extraction
-    %supInfo(iter+nodeOffset).lbpHist       = hist(lbpCode(pickInd),0:((supInfo(1).mapping.num)-1)); 
-    %supInfo(iter+nodeOffset).lbpHist       = supInfo(iter+nodeOffset).lbpHist./sum(supInfo(iter+nodeOffset).lbpHist);
+    supInfo(iter+nodeOffset).lbpHist       = hist(lbpCode(pickInd),0:((supInfo(1).mapping.num)-1)); 
+    supInfo(iter+nodeOffset).lbpHist       = supInfo(iter+nodeOffset).lbpHist./sum(supInfo(iter+nodeOffset).lbpHist);
     %supInfo(iter+nodeOffset).hoof          = vrl_hog(Vx, Vy, Im, pickInd, 16);
     
     if( USE_RGB )
-        h            = double( ceil( [RED(pickInd) GREEN(pickInd) BLUE(pickInd)] / bin_width ) );
-        h(h==0)      = 1;
-% % % % % % % %         color_hist    = zeros(no_bins, no_bins, no_bins);
-% % % % % % % %         try
-% % % % % % % %             for row_iter = 1:size(h,1)
-% % % % % % % %                 color_hist(h(row_iter,1),h(row_iter,2),h(row_iter,3)) = color_hist(h(row_iter,1),h(row_iter,2),h(row_iter,3)) + 1;
-% % % % % % % %             end
-% % % % % % % %         catch me
-% % % % % % % %             color_hist
-% % % % % % % %         end
+% % %         h            = double( ceil( [RED(pickInd) GREEN(pickInd) BLUE(pickInd)] / bin_width ) );
+% % %         h(h==0)      = 1;
+% % %         color_hist    = zeros(no_bins, no_bins, no_bins);
+% % %         try
+% % %             for row_iter = 1:size(h,1)
+% % %                 color_hist(h(row_iter,1),h(row_iter,2),h(row_iter,3)) = color_hist(h(row_iter,1),h(row_iter,2),h(row_iter,3)) + 1;
+% % %             end
+% % %         catch me
+% % %             color_hist
+% % %         end
         singChannel  = I(:,:,1);
         color_hist = histc(singChannel(pickInd), linspace(0, 255, no_bins+1));
         color_hist(end-1) = color_hist(end-1) + color_hist(end);
         color_hist(end) = [];
-        color_hist = color_hist ./ sum( color_hist(:) );
-        supInfo(iter+nodeOffset).colorHist = color_hist;
+         color_hist = color_hist ./ sum( color_hist(:) );
+         supInfo(iter+nodeOffset).colorHist = color_hist;
         
     else
         LH = hist(RED(pickInd), CL(1:end-1) );
